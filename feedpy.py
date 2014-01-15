@@ -16,8 +16,11 @@ class Feedpy(object):
 
     def __init__(self, api):
         self.api = api
-        self._get = self.api.get
-        self._post = self.api.post
+
+    @property
+    def _get(self): return self.api.get
+    @property
+    def _post(self): return self.api.post
 
     def _subscriptions(self):
         subscriptions = self._get('/subscriptions')
