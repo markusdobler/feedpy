@@ -2,6 +2,103 @@ import requests
 import json
 import re
 from collections import defaultdict
+import base64
+from datetime import datetime
+
+class Entry(object):
+    def __init__(self, entry, stream):
+        self._entry = entry
+        self._stream = stream
+
+    def get(self, attr, default=None):
+        return self._entry.get(attr, default)
+
+    @property
+    def title(self):
+        return self.get('title', "<no title>")
+
+    @property
+    def keep_unread(self):
+        saved_tag = self._stream._feedpy.api.global_resource_id('tag', 'saved')
+        return saved_tag in [t['id'] for t in self.get('tags',default=())]
+
+    @property
+    def link(self):
+        is_link = lambda l: l.startswith('https://') or l.startswith('http://')
+        originId = self.get('originId', '')
+        if is_link(originId):
+            return originId
+        for a in self.get('alternate', ()):
+            href = a['href']
+            if is_link(href):
+                return href
+        return "#nolink"
+
+    @property
+    def content(self):
+        return (
+            self.get('content',{}).get('content')
+            or self.get('summary',{}).get('content')
+            or "<b>no content found:</b> <tt>%s</tt>" % self._entry
+        )
+
+    @property
+    def origin_title(self):
+        return (
+            self.get('origin',{}).get('title')
+            or "</>"
+        )
+
+    @property
+    def origin_title_short(self):
+        otitle = self.origin_title
+        initials = [part[0] for part in otitle.split()]
+        return "".join(i for i in initials if i.isalnum())
+
+    @property
+    def _timestamp(self):
+        published = self.get('published')
+        if published is None:
+            return "<unknown time>"
+        return datetime.fromtimestamp(published/1000)
+
+    @property
+    def timestamp(self):
+        return self._timestamp.strftime('%Y-%m-%d %H:%M:%S')
+
+    @property
+    def age(self):
+        delta = datetime.now() - self._timestamp
+        totalseconds = delta.days*24*60*60 + delta.seconds
+        if totalseconds > 30*60*60:
+            return "%id" % round(totalseconds/(24*60*60))
+        if totalseconds > 80*60:
+            return "%ih" % round(totalseconds/(60*60))
+        if totalseconds > 5*60:
+            return "%im" % round(totalseconds/(60))
+        return "just now"
+
+    @property
+    def id(self):
+        return self.get('id')
+
+    @property
+    def content_b64(self):
+        return base64.b64encode(self.content.encode('utf8'))
+
+
+class Stream(object):
+    def __init__(self, content, feedpy):
+        self._content = content
+        self._feedpy = feedpy
+        self.entries = [Entry(e, self) for e in content['items']]
+
+    @property
+    def title(self):
+        return (
+            self._content.get('title')
+            or self._content.get('id', '').split('/')[-1]
+        )
 
 
 class Feedpy(object):
@@ -70,14 +167,7 @@ class Feedpy(object):
             'continuation': continuation,
         }
         content = self._get('/streams/contents', params)
-        self._add_keepunread_indicator(content['items'])
-        return content
-
-    def _add_keepunread_indicator(self, items):
-        saved_tag = self.api.global_resource_id('tag', 'saved')
-        for entry in items:
-            keep_unread = saved_tag in [t['id'] for t in entry.get('tags', ())]
-            entry['keepUnread'] = keep_unread
+        return Stream(content, self)
 
 
     def _post_to_markers(self, action, type_singular, type_plural, ids, last_entry_id=None):
