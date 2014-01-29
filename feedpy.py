@@ -207,10 +207,8 @@ class FeedlyAPIRequestException(FeedlyAPIException):
 
 def retry_with_authorization_renewed(request):
     def wrapper(self, *args, **kwargs):
-        print request, args
         r = request(self, *args, **kwargs)
         if r.status_code == 401:
-            print "retry"
             self.reauthenticate()
             r = request(self, *args, **kwargs)
         if r.status_code not in (200,):
