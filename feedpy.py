@@ -194,6 +194,7 @@ class Feedpy(object):
 
     def recently_read(self, **params):
         stream = self.api.global_resource_id('tag', 'read')
+        params.setdefault('oldest_first', False)
         return self.stream_content(stream, **params)
 
 
